@@ -24,8 +24,8 @@
   .hbtn:hover { color:#fff; }
   #craftUI { position:absolute; inset:0; pointer-events:none; display:flex; justify-content:space-between; align-items:flex-start; }
   #craftPanel { max-width:min(300px, 55vw); }
-  #craftStats { text-align:left; min-width:160px; max-width:min(210px,42vw); }
-  #craftStats td { font-size:11.5px; padding:2px 4px; }
+  #craftStats { text-align:left; min-width:220px; max-width:min(360px,46vw); }
+  #craftStats td { font-size:11px; padding:1px 4px; white-space:nowrap; }
   #craftStats td:last-child { text-align:right; color:#ffd479; font-weight:bold; font-variant-numeric:tabular-nums; }
   #gamePanel { position:absolute; top:0; left:0; max-width:min(270px,55vw); }
   #scoreboard { position:absolute; top:0; right:0; text-align:right; font-variant-numeric:tabular-nums; max-width:min(180px,42vw); }
@@ -52,7 +52,6 @@
     #craftUI { flex-direction:column; align-items:stretch; height:auto; }
     #craftPanel { max-width:none; }
     #craftStats { max-width:none; min-width:0; }
-    #craftStats canvas#radar { display:block; width:calc(100% - 16px) !important; max-width:200px; height:130px !important; margin:4px auto 0; }
     #gamePanel { max-width: calc(58vw); }
     #scoreboard { max-width: 38vw; }
     #scoreboard p { font-size:11px; }
@@ -148,18 +147,22 @@
         <option value="obsidian">黒曜石 (Obsidian) - 漆黒の魔器</option>
       </select>
     </div>
-    <button id="resetBtn" class="sub">丸太からやり直す</button><br>
-    <button id="doneBtn">完成！打席に立つ</button>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+      <button id="resetBtn" class="sub" style="margin:0;">丸太からやり直す</button>
+      <button id="doneBtn" style="margin:0;">完成！打席に立つ</button>
+    </div>
   </div>
   <div class="panel" id="craftStats">
-    <h1><svg class="ui-icon" viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; margin-right:4px;"><polygon points="5 5 5 19 19 19"/><polygon points="8 11 8 16 13 16"/></svg>バット計測</h1>
-    <table>
-      <tr><td>質量</td><td id="stMass">–</td></tr>
-      <tr><td>重心 (グリップから)</td><td id="stCom">–</td></tr>
-      <tr><td>スイング所要時間</td><td id="stSwing">–</td></tr>
-      <tr><td>芯の太さ</td><td id="stBarrel">–</td></tr>
-    </table>
-    <canvas id="radar" width="210" height="190" style="display:block;margin:6px auto 0"></canvas>
+    <h1 style="margin-bottom:6px;"><svg class="ui-icon" viewBox="0 0 24 24" width="18" height="18" style="vertical-align:middle; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; margin-right:4px;"><polygon points="5 5 5 19 19 19"/><polygon points="8 11 8 16 13 16"/></svg>バット計測</h1>
+    <div style="display:flex;align-items:flex-start;gap:6px;">
+      <table style="flex:1;min-width:0;">
+        <tr><td>質量</td><td id="stMass">–</td></tr>
+        <tr><td>重心</td><td id="stCom">–</td></tr>
+        <tr><td>スイング時間</td><td id="stSwing">–</td></tr>
+        <tr><td>芯の直径</td><td id="stBarrel">–</td></tr>
+      </table>
+      <canvas id="radar" width="156" height="128" style="flex-shrink:0;display:block;"></canvas>
+    </div>
   </div>
   </div><!-- /#craftUI -->
 
@@ -564,18 +567,17 @@ function updateCraftStats() {
   $('stMass').textContent = (s.M*1000).toFixed(0) + ' g';
   $('stCom').textContent = (s.com*100).toFixed(1) + ' cm';
   $('stSwing').textContent = s.swingT.toFixed(2) + ' 秒';
-  $('stBarrel').textContent = '直径 ' + (s.barrel*200).toFixed(1) + ' cm';
+  $('stBarrel').textContent = (s.barrel*200).toFixed(1) + ' cm';
   $('meterFill').style.width = clamp(s.M/8.0, 0, 1)*100 + '%';
   drawRadar(clamp(s.meff/3.5, .06, 1), clamp((0.8-s.swingT)/0.55, .06, 1), clamp(s.flex/3, .06, 1));
 }
 // パワー / 操作性 / しなり の三角レーダーチャート
 function drawRadar(p, h, f) {
   const cv = $('radar'), g = cv.getContext('2d');
-  const cx = 105, cy = 102, R = 72;
+  const cx = 78, cy = 68, R = 48;
   const axes = [-Math.PI/2, Math.PI/2 + Math.PI/3, Math.PI/2 - Math.PI/3]; // 上, 左下, 右下
   const pt = (ang, r) => [cx + Math.cos(ang)*r, cy + Math.sin(ang)*r];
   g.clearRect(0, 0, cv.width, cv.height);
-  // 目盛りの三角グリッド
   for (let k = 3; k >= 1; k--) {
     g.beginPath();
     axes.forEach((a, i) => { const [x, y] = pt(a, R*k/3); i ? g.lineTo(x, y) : g.moveTo(x, y); });
@@ -583,7 +585,6 @@ function drawRadar(p, h, f) {
     g.strokeStyle = 'rgba(140,170,220,.28)'; g.lineWidth = 1; g.stroke();
   }
   axes.forEach(a => { const [x, y] = pt(a, R); g.beginPath(); g.moveTo(cx, cy); g.lineTo(x, y); g.stroke(); });
-  // 値ポリゴン
   const vals = [p, h, f];
   g.beginPath();
   axes.forEach((a, i) => { const [x, y] = pt(a, R*vals[i]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
@@ -591,14 +592,13 @@ function drawRadar(p, h, f) {
   const grad = g.createLinearGradient(cx, cy-R, cx, cy+R);
   grad.addColorStop(0, 'rgba(90,220,255,.55)'); grad.addColorStop(1, 'rgba(255,110,150,.45)');
   g.fillStyle = grad; g.fill();
-  g.shadowColor = '#6fe0ff'; g.shadowBlur = 10;
+  g.shadowColor = '#6fe0ff'; g.shadowBlur = 8;
   g.strokeStyle = '#8ff0ff'; g.lineWidth = 2; g.stroke();
   g.shadowBlur = 0;
-  // ラベル
-  g.fillStyle = '#dce8ff'; g.font = 'bold 12px sans-serif'; g.textAlign = 'center';
-  g.fillText('パワー', cx, cy - R - 8);
-  g.fillText('操作性', cx - R + 4, cy + R*0.62 + 16);
-  g.fillText('しなり', cx + R - 4, cy + R*0.62 + 16);
+  g.fillStyle = '#dce8ff'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center';
+  g.fillText('パワー', cx, cy - R - 6);
+  g.fillText('操作性', cx - R + 2, cy + R*0.62 + 14);
+  g.fillText('しなり', cx + R - 2, cy + R*0.62 + 14);
 }
 
 // ================= 効果音（WebAudio合成） =================

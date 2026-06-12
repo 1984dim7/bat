@@ -395,8 +395,7 @@ function updateCraft(dt) {
 // 座標系: ホームベース原点、投手方向が -Z。右打者は三塁側（-X）に立つ。
 let gameBat, batterParts, ball, ballShadow, aimRing, pitchGauge, trail = [];
 const MOUND = new THREE.Vector3(0.25, 1.85, -18.0);
-function buildField() {
-  disposeGroup(gameGroup);
+function addGroundAndSkyland() {
   // ナイター: 夕暮れの空 + 照明に照らされたフィールド
   scene.background = new THREE.Color(0x0d1830);
   scene.fog = new THREE.Fog(0x141f38, 160, 520);
@@ -421,6 +420,9 @@ function buildField() {
     ring.rotation.x = -Math.PI/2; ring.position.y = .02;
     gameGroup.add(ring);
   }
+}
+
+function addInfieldAndBases() {
   // 内野の土・マウンド
   const dirtMat = new THREE.MeshStandardMaterial({color:0xb9824f, roughness:.9});
   const dirt = new THREE.Mesh(new THREE.CircleGeometry(13, 48), dirtMat);
@@ -445,6 +447,10 @@ function buildField() {
   const plate = new THREE.Mesh(new THREE.BoxGeometry(.45, .02, .35), white);
   plate.position.set(0, .05, 0);
   gameGroup.add(plate);
+}
+
+function addOutfieldStructures() {
+  const poleMat = new THREE.MeshStandardMaterial({color:0x39414e, metalness:.6, roughness:.5});
   // 外野フェンス（98m）+ 黄色ライン + スタンド
   const fenceWedge = (rad, h, y, color) => {
     const m = new THREE.Mesh(
@@ -474,7 +480,6 @@ function buildField() {
     gameGroup.add(new THREE.Points(g, new THREE.PointsMaterial({size:.55, vertexColors:true})));
   }
   // 照明塔
-  const poleMat = new THREE.MeshStandardMaterial({color:0x39414e, metalness:.6, roughness:.5});
   const lampMat = new THREE.MeshBasicMaterial({color:0xfff6d8});
   for (const th of [0.76, 0.93, 1.07, 1.24].map(v => v*Math.PI)) {
     const x = 104*Math.sin(th), z = 104*Math.cos(th);
@@ -508,6 +513,9 @@ function buildField() {
     sb.position.set(0, 12.5, -109);
     gameGroup.add(sb);
   }
+}
+
+function addBuildings() {
   // 場外のビル街
   for (let i = 0; i < 26; i++) {
     const th = Math.PI*(0.72 + Math.random()*0.56);
@@ -519,6 +527,9 @@ function buildField() {
     b.rotation.y = Math.random()*Math.PI;
     gameGroup.add(b);
   }
+}
+
+function addSkyStarsAndMoon() {
   // 宇宙: 星空と月（フォグの影響を受けない）
   {
     const n = 900, pos = new Float32Array(n*3);
@@ -537,6 +548,9 @@ function buildField() {
     moon.position.set(-170, 240, -300);
     gameGroup.add(moon);
   }
+}
+
+function addPlayersAndGuides() {
   // ピッチャー
   const bodyMat = new THREE.MeshStandardMaterial({color:0xe8e8e2});
   const pitcher = new THREE.Mesh(new THREE.CylinderGeometry(.26, .31, 1.15, 12), bodyMat);
@@ -597,6 +611,9 @@ function buildField() {
     pitchGauge.visible = false;
     gameGroup.add(pitchGauge);
   }
+}
+
+function addGameBallsAndBat() {
   // バットとボール
   gameBat = new THREE.Mesh(batGeometry(), woodMat);
   gameBat.castShadow = true;
@@ -630,6 +647,17 @@ function buildField() {
       new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:.4}));
     t.visible = false; trail.push(t); gameGroup.add(t);
   }
+}
+
+function buildField() {
+  disposeGroup(gameGroup);
+  addGroundAndSkyland();
+  addInfieldAndBases();
+  addOutfieldStructures();
+  addBuildings();
+  addSkyStarsAndMoon();
+  addPlayersAndGuides();
+  addGameBallsAndBat();
 }
 
 // ================= スイングと物理 =================

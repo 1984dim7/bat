@@ -298,7 +298,7 @@ function showMsg(text, color='#fff', ms=1100) {
 // ================= 工房（旋盤） =================
 let craftBat, kanna, shavings = [], brushW = 4, carving = false, cursorX = 0, overLog = false;
 function buildCraft() {
-  craftGroup.clear(); shavings = [];
+  disposeGroup(craftGroup); shavings = [];
   // 横向きの丸太（X軸沿い・回転）
   craftBat = new THREE.Mesh(batGeometry(), woodMat);
   craftBat.rotation.z = -Math.PI/2;           // Y→X 横倒し
@@ -396,7 +396,7 @@ function updateCraft(dt) {
 let gameBat, batterParts, ball, ballShadow, aimRing, pitchGauge, trail = [];
 const MOUND = new THREE.Vector3(0.25, 1.85, -18.0);
 function buildField() {
-  gameGroup.clear();
+  disposeGroup(gameGroup);
   // ナイター: 夕暮れの空 + 照明に照らされたフィールド
   scene.background = new THREE.Color(0x0d1830);
   scene.fog = new THREE.Fog(0x141f38, 160, 520);
@@ -693,7 +693,7 @@ function releasePitch() {
   const ps = $('pitchSpeed');
   ps.textContent = '球速 ' + kmh.toFixed(0) + ' km/h';
   ps.style.opacity = 1;
-  setTimeout(() => ps.style.opacity = 0, 900);
+  gameTimeout(() => ps.style.opacity = 0, 900);
 }
 function pitchPos(k) {
   const p = pitch.p0.clone().lerp(pitch.p1, k);
@@ -793,14 +793,14 @@ function landBall() {
   snd.land();
   $('hits').textContent = score.hits; $('hrs').textContent = score.hrs; $('best').textContent = score.best;
   fly.v.set(fly.v.x*.42, Math.abs(fly.v.y)*.38, fly.v.z*.42);  // バウンド
-  setTimeout(nextPitch, fly.super ? 2200 : 1500);
+  gameTimeout(nextPitch, fly.super ? 2200 : 1500);
 }
 let camHome = null;
 function nextPitch() {
   ball.visible = false; ballShadow.visible = false; fly = null;
   if (camHome) { camera.position.copy(camHome.pos); camera.lookAt(camHome.look); }
   if (score.pitch >= 10) showEnd();
-  else setTimeout(startPitch, 400);   // ＋ワインドアップ2秒で次の球まで間が空く
+  else gameTimeout(startPitch, 400);   // ＋ワインドアップ2秒で次の球まで間が空く
 }
 
 // ================= ランキング（ブラウザ保存） =================
@@ -854,7 +854,7 @@ $('regBtn').onclick = () => {
   renderRank(rec); snd.ui();
   $('regBtn').disabled = true; $('regBtn').textContent = '登録しました ✓';
 };
-$('againBtn').onclick = () => { snd.ui(); $('endPanel').style.display = 'none'; resetScore(); setTimeout(startPitch, 600); };
+$('againBtn').onclick = () => { snd.ui(); $('endPanel').style.display = 'none'; resetScore(); gameTimeout(startPitch, 600); };
 $('craftBtn2').onclick = () => { snd.ui(); $('endPanel').style.display = 'none'; toCraft(); };
 
 function updateGame(dt) {
@@ -881,7 +881,7 @@ function updateGame(dt) {
         showMsg(swing ? '空振り！' : (inZone ? '見逃しストライク' : 'ボール'),
                 swing ? '#ff9d6b' : '#cfd6e4');
         pitch = null; ball.visible = false; ballShadow.visible = false;
-        setTimeout(() => { if (score.pitch >= 10) nextPitch(); else startPitch(); }, 1100);
+        gameTimeout(() => { if (score.pitch >= 10) nextPitch(); else startPitch(); }, 1100);
       } else ball.position.copy(pitchPos(kk));
     }
     if (swing) {
@@ -972,7 +972,47 @@ addEventListener('wheel', e => {
 });
 
 // ================= モード切替 =================
+const gameTimers = [];
+function gameTimeout(fn, ms) {
+  const id = setTimeout(() => {
+    const idx = gameTimers.indexOf(id);
+    if (idx !== -1) gameTimers.splice(idx, 1);
+    fn();
+  }, ms);
+  gameTimers.push(id);
+  return id;
+}
+function clearGameTimers() {
+  gameTimers.forEach(id => clearTimeout(id));
+  gameTimers.length = 0;
+}
+
+function disposeMaterial(mat) {
+  mat.dispose();
+  for (const key in mat) {
+    if (mat[key] && typeof mat[key].dispose === 'function') {
+      mat[key].dispose();
+    }
+  }
+}
+function disposeGroup(group) {
+  group.traverse(child => {
+    if (child.isMesh || child.isPoints || child.isSprite || child.isLine || child.isLineSegments) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => disposeMaterial(mat));
+        } else {
+          disposeMaterial(child.material);
+        }
+      }
+    }
+  });
+  group.clear();
+}
+
 function clearPlayState() {
+  clearGameTimers();
   pitch = null; swing = null; fly = null; windup = null;
   if (ball) ball.visible = false;
   if (ballShadow) ballShadow.visible = false;
@@ -1020,11 +1060,11 @@ function toGame() {
   camera.lookAt(camHome.look);
   resetScore();
   buildField();
-  setTimeout(startPitch, 1000);
+  gameTimeout(startPitch, 1000);
 }
 $('doneBtn').onclick = toGame;
 $('backBtn').onclick = toCraft;
-$('retryBtn').onclick = () => { resetScore(); setTimeout(startPitch, 600); };
+$('retryBtn').onclick = () => { resetScore(); gameTimeout(startPitch, 600); };
 $('resetBtn').onclick = () => { radii.fill(LOG_R); buildCraft(); };
 
 // 検証ハーネス（docs/smoke-test.md が依存）— 削除禁止

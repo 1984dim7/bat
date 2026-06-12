@@ -1,0 +1,21 @@
+{
+  "name": "bat",
+  "version": "1.0.0",
+  "description": "3D野球ミニゲーム「バット工房 ⚾ Bat Craft Baseball」",
+  "scripts": {
+    "build": "rm -rf www && mkdir -p www/vendor && cp index.html www/ && cp vendor/three.min.js www/vendor/",
+    "ios": "npm run build && npx cap sync ios && npx cap open ios"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1984dim7/bat.git"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.0"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0"
+  }
+}

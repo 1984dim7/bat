@@ -1,0 +1,7 @@
+.DS_Store
+node_modules/
+www/
+ios/App/App/public/
+ios/App/output/
+ios/DerivedData/
+.npm/

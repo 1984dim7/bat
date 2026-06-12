@@ -2317,7 +2317,7 @@ function toCraft() {
   mode = 'craft';
   clearPlayState();   // 進行中の打席を完全に止める
   $('endPanel').style.display = 'none';
-  $('modeSelectModal').style.display = 'none';
+  if ($('modeSelectModal')) $('modeSelectModal').style.display = 'none';
   craftGroup.visible = true; gameGroup.visible = false;
   scene.background = new THREE.Color(0x1b1510); scene.fog = null;
   sun.intensity = .25; hemi.intensity = .15; amb.intensity = .3; spot.intensity = 1.8;

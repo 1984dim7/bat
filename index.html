@@ -777,7 +777,7 @@ function buildField() {
 const MEET = { sE: 0.38, dirX: 0.94, leadT: 0.40 };
 let BS;                       // 打席に入った時点のバット性能（固定）
 let aim = {x:.5, y:.5};       // マウス正規化座標
-let swing = null, pitch = null, fly = null, windup = null;
+let swing = null, pitch = null, fly = null, windup = null, impact = null;
 let score = {pitch:0, hits:0, hrs:0, best:0, total:0};
 let camOff = {x:0, y:0}, dragStart = null;
 const SWEEP0 = -1.40, SWEEP1 = 2.10;   // バットのヨー角範囲(rad)
@@ -927,17 +927,21 @@ function tryContact(h) {
     x:+contact.x.toFixed(3), n:contact.n.toArray().map(v=>+v.toFixed(2)), q:+q.toFixed(2),
     eA:+eA.toFixed(2), vBat:contact.vBat.toArray().map(v=>+v.toFixed(1)), vOut:vOut.toArray().map(v=>+v.toFixed(1))};
   pitch = null;
-  // 良い当たりほど空気抵抗も切り裂く（指数的な飛距離の伸びを支える）
-  fly = {v:vOut, t:0, landed:false, follow:true, super:superHit, dragK:0.0042/mult,
-         trailT:0, ti:0, peak:ball.position.y};
+  
+  // スローモーション演出およびズームイン用のインパクト状態をセット
+  impact = {
+    t: 0,
+    duration: 0.75, // インパクト演出時間（秒）
+    contactPoint: contact.C.clone(),
+    vOut: vOut.clone(),
+    superHit: superHit,
+    mult: mult,
+    dragK: 0.0042/mult,
+    peak: ball.position.y,
+    exitKmh: vOut.length()*3.6,
+    launch: Math.atan2(vOut.y, Math.hypot(vOut.x, vOut.z))*180/Math.PI
+  };
   for (const t of trail) t.visible = false;
-  // HUD
-  const exitKmh = vOut.length()*3.6;
-  const launch = Math.atan2(vOut.y, Math.hypot(vOut.x, vOut.z))*180/Math.PI;
-  $('hitData').style.display = 'block';
-  $('hdSpeed').textContent = exitKmh.toFixed(0);
-  $('hdAngle').textContent = launch.toFixed(0) + '°';
-  $('hdDir').textContent = '–'; $('hdDist').textContent = '–';
 }
 
 function sprayLabel(deg) {
@@ -1211,6 +1215,30 @@ function resolveBallCollisions() {
 }
 
 function updateGame(dt) {
+  if (impact) {
+    impact.t += dt;
+    ball.position.copy(impact.contactPoint);
+    ball.visible = true;
+    ballShadow.position.set(ball.position.x, .06, ball.position.z);
+    ballShadow.visible = true;
+    
+    // カメラを衝突点へズームイン
+    const zoomOffset = new THREE.Vector3(0.5, 0.22, 0.9);
+    const targetCamPos = impact.contactPoint.clone().add(zoomOffset);
+    camera.position.lerp(targetCamPos, 0.12);
+    camera.lookAt(impact.contactPoint);
+    
+    if (impact.t >= impact.duration) {
+      fly = {v:impact.vOut, t:0, landed:false, follow:true, super:impact.superHit, dragK:impact.dragK,
+             trailT:0, ti:0, peak:impact.peak};
+      $('hitData').style.display = 'block';
+      $('hdSpeed').textContent = impact.exitKmh.toFixed(0);
+      $('hdAngle').textContent = impact.launch.toFixed(0) + '°';
+      $('hdDir').textContent = '–'; $('hdDist').textContent = '–';
+      impact = null;
+    }
+    return;
+  }
   // ワインドアップゲージ: ピッチャーを囲む円が縮み、0になった瞬間に発射
   if (windup) {
     windup.t += dt;
@@ -1367,7 +1395,7 @@ function disposeGroup(group) {
 
 function clearPlayState() {
   clearGameTimers();
-  pitch = null; swing = null; fly = null; windup = null;
+  pitch = null; swing = null; fly = null; windup = null; impact = null;
   if (ball) ball.visible = false;
   if (ballShadow) ballShadow.visible = false;
   if (pitchGauge) pitchGauge.visible = false;

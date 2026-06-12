@@ -395,6 +395,7 @@ function updateCraft(dt) {
 // 座標系: ホームベース原点、投手方向が -Z。右打者は三塁側（-X）に立つ。
 let gameBat, batterParts, ball, ballShadow, aimRing, pitchGauge, trail = [];
 const MOUND = new THREE.Vector3(0.25, 1.85, -18.0);
+let fieldColliders = [];
 function addGroundAndSkyland() {
   // ナイター: 夕暮れの空 + 照明に照らされたフィールド
   scene.background = new THREE.Color(0x0d1830);
@@ -463,6 +464,17 @@ function addOutfieldStructures() {
   gameGroup.add(fenceWedge(98, .18, 3.7, 0xf2c230));
   gameGroup.add(fenceWedge(112, 9, 5.5, 0x465062));
   gameGroup.add(fenceWedge(113, 9, 11, 0x2c3542));
+
+  // Register cylinder shell colliders
+  // Outfield Fence (yMin=0, yMax=3.79, radius=98)
+  fieldColliders.push({ type: 'cylinder_shell', radius: 98, yMin: 0, yMax: 3.79, thetaStart: Math.PI * 0.70, thetaLength: Math.PI * 0.60, landing: false });
+  // Stands Wall 1 (radius=112, yMin=1.0, yMax=10.0)
+  fieldColliders.push({ type: 'cylinder_shell', radius: 112, yMin: 1.0, yMax: 10.0, thetaStart: Math.PI * 0.70, thetaLength: Math.PI * 0.60, landing: true });
+  // Stands Wall 2 (radius=113, yMin=6.5, yMax=15.5)
+  fieldColliders.push({ type: 'cylinder_shell', radius: 113, yMin: 6.5, yMax: 15.5, thetaStart: Math.PI * 0.70, thetaLength: Math.PI * 0.60, landing: true });
+  // Stands Slope (rMin=103, rMax=112, yMin=3.5, yMax=14.5)
+  fieldColliders.push({ type: 'stands_slope', rMin: 103, rMax: 112, yMin: 3.5, yMax: 14.5, thetaStart: Math.PI * 0.72, thetaLength: Math.PI * 0.56, landing: true });
+
   // 観客（スタンドのカラフルな点々）
   {
     const n = 1200, pos = new Float32Array(n*3), col = new Float32Array(n*3), c = new THREE.Color();
@@ -512,6 +524,8 @@ function addOutfieldStructures() {
       [poleMat, poleMat, poleMat, poleMat, new THREE.MeshBasicMaterial({map:tex}), poleMat]);
     sb.position.set(0, 12.5, -109);
     gameGroup.add(sb);
+    // Scoreboard Collider (x: [-9, 9], y: [8.5, 16.5], z: [-109.4, -108.6])
+    fieldColliders.push({ type: 'box', min: new THREE.Vector3(-9, 8.5, -109.4), max: new THREE.Vector3(9, 16.5, -108.6), landing: true });
   }
 }
 
@@ -526,6 +540,13 @@ function addBuildings() {
     b.position.set(r*Math.sin(th), hgt/2, r*Math.cos(th));
     b.rotation.y = Math.random()*Math.PI;
     gameGroup.add(b);
+    fieldColliders.push({
+      type: 'rotated_box',
+      center: b.position.clone(),
+      size: new THREE.Vector3(w, hgt, w),
+      rotY: b.rotation.y,
+      landing: true
+    });
   }
 }
 
@@ -651,6 +672,7 @@ function addGameBallsAndBat() {
 
 function buildField() {
   disposeGroup(gameGroup);
+  fieldColliders = [];
   addGroundAndSkyland();
   addInfieldAndBases();
   addOutfieldStructures();
@@ -823,7 +845,7 @@ function sprayLabel(deg) {
   if (deg > -5) return 'センター'; if (deg > -18) return '右中間';
   return 'ライト';
 }
-function landBall() {
+function landBall(isGround = true) {
   fly.landed = true;
   const lx = ball.position.x, lz = ball.position.z;
   const dist = Math.round(Math.hypot(lx, lz));
@@ -843,7 +865,9 @@ function landBall() {
   }
   snd.land();
   $('hits').textContent = score.hits; $('hrs').textContent = score.hrs; $('best').textContent = score.best;
-  fly.v.set(fly.v.x*.42, Math.abs(fly.v.y)*.38, fly.v.z*.42);  // バウンド
+  if (isGround) {
+    fly.v.set(fly.v.x*.42, Math.abs(fly.v.y)*.38, fly.v.z*.42);  // バウンド
+  }
   gameTimeout(nextPitch, fly.super ? 2200 : 1500);
 }
 let camHome = null;
@@ -905,8 +929,186 @@ $('regBtn').onclick = () => {
   renderRank(rec); snd.ui();
   $('regBtn').disabled = true; $('regBtn').textContent = '登録しました ✓';
 };
-$('againBtn').onclick = () => { snd.ui(); $('endPanel').style.display = 'none'; resetScore(); gameTimeout(startPitch, 600); };
-$('craftBtn2').onclick = () => { snd.ui(); $('endPanel').style.display = 'none'; toCraft(); };
+function checkCylinderShell(ballPos, col) {
+  const r = Math.hypot(ballPos.x, ballPos.z);
+  const distToCyl = Math.abs(r - col.radius);
+  if (distToCyl > BALL_R) return null; // No collision with shell
+
+  // Check height
+  if (ballPos.y < col.yMin || ballPos.y > col.yMax) return null;
+
+  // Check angle
+  let ang = Math.atan2(ballPos.x, ballPos.z);
+  if (ang < 0) ang += Math.PI * 2;
+  // Handle wraparound for wedge angle
+  let inWedge = false;
+  const tStart = col.thetaStart;
+  const tEnd = col.thetaStart + col.thetaLength;
+  if (tEnd > Math.PI * 2) {
+    inWedge = (ang >= tStart || ang <= tEnd - Math.PI * 2);
+  } else {
+    inWedge = (ang >= tStart && ang <= tEnd);
+  }
+  if (!inWedge) return null;
+
+  // Collision detected!
+  const nx = ballPos.x / r;
+  const nz = ballPos.z / r;
+  const sign = (r > col.radius) ? 1 : -1;
+  const normal = new THREE.Vector3(sign * nx, 0, sign * nz).normalize();
+  const penetration = BALL_R - distToCyl;
+
+  return { normal, penetration, landing: col.landing };
+}
+
+function checkStandsSlope(ballPos, col) {
+  const r = Math.hypot(ballPos.x, ballPos.z);
+  if (r < col.rMin || r > col.rMax) return null;
+
+  // Check angle
+  let ang = Math.atan2(ballPos.x, ballPos.z);
+  if (ang < 0) ang += Math.PI * 2;
+  const tStart = col.thetaStart;
+  const tEnd = col.thetaStart + col.thetaLength;
+  if (ang < tStart || ang > tEnd) return null;
+
+  const ySlope = col.yMin + (r - col.rMin) * (col.yMax - col.yMin) / (col.rMax - col.rMin);
+  if (ballPos.y - BALL_R > ySlope) return null;
+
+  const slope = (col.yMax - col.yMin) / (col.rMax - col.rMin);
+  const nx = -slope * (ballPos.x / r);
+  const nz = -slope * (ballPos.z / r);
+  const normal = new THREE.Vector3(nx, 1, nz).normalize();
+
+  const penetration = ySlope - (ballPos.y - BALL_R);
+  return { normal, penetration, landing: col.landing };
+}
+
+function checkAABB(ballPos, col) {
+  const min = col.min;
+  const max = col.max;
+
+  const cx = clamp(ballPos.x, min.x, max.x);
+  const cy = clamp(ballPos.y, min.y, max.y);
+  const cz = clamp(ballPos.z, min.z, max.z);
+
+  const dist = Math.hypot(ballPos.x - cx, ballPos.y - cy, ballPos.z - cz);
+  if (dist > BALL_R && (ballPos.x >= min.x && ballPos.x <= max.x &&
+                        ballPos.y >= min.y && ballPos.y <= max.y &&
+                        ballPos.z >= min.z && ballPos.z <= max.z) === false) {
+    return null;
+  }
+
+  let normal;
+  let penetration;
+  if (dist > 1e-4) {
+    normal = new THREE.Vector3(ballPos.x - cx, ballPos.y - cy, ballPos.z - cz).normalize();
+    penetration = BALL_R - dist;
+  } else {
+    const dx1 = ballPos.x - min.x;
+    const dx2 = max.x - ballPos.x;
+    const dy1 = ballPos.y - min.y;
+    const dy2 = max.y - ballPos.y;
+    const dz1 = ballPos.z - min.z;
+    const dz2 = max.z - ballPos.z;
+    const minDist = Math.min(dx1, dx2, dy1, dy2, dz1, dz2);
+    if (minDist === dx1) { normal = new THREE.Vector3(-1, 0, 0); penetration = dx1 + BALL_R; }
+    else if (minDist === dx2) { normal = new THREE.Vector3(1, 0, 0); penetration = dx2 + BALL_R; }
+    else if (minDist === dy1) { normal = new THREE.Vector3(0, -1, 0); penetration = dy1 + BALL_R; }
+    else if (minDist === dy2) { normal = new THREE.Vector3(0, 1, 0); penetration = dy2 + BALL_R; }
+    else if (minDist === dz1) { normal = new THREE.Vector3(0, 0, -1); penetration = dz1 + BALL_R; }
+    else { normal = new THREE.Vector3(0, 0, 1); penetration = dz2 + BALL_R; }
+  }
+
+  return { normal, penetration, landing: col.landing };
+}
+
+function checkRotatedBox(ballPos, col) {
+  const dx = ballPos.x - col.center.x;
+  const dz = ballPos.z - col.center.z;
+
+  const cos = Math.cos(-col.rotY);
+  const sin = Math.sin(-col.rotY);
+  const lx = dx * cos - dz * sin;
+  const lz = dx * sin + dz * cos;
+  const ly = ballPos.y;
+
+  const hW = col.size.x / 2;
+  const hD = col.size.z / 2;
+  const hH = col.size.y;
+
+  const cx = clamp(lx, -hW, hW);
+  const cy = clamp(ly, 0, hH);
+  const cz = clamp(lz, -hD, hD);
+
+  const dist = Math.hypot(lx - cx, ly - cy, lz - cz);
+  if (dist > BALL_R && (lx >= -hW && lx <= hW &&
+                        ly >= 0 && ly <= hH &&
+                        lz >= -hD && lz <= hD) === false) {
+    return null;
+  }
+
+  let localNormal;
+  let penetration;
+  if (dist > 1e-4) {
+    localNormal = new THREE.Vector3(lx - cx, ly - cy, lz - cz).normalize();
+    penetration = BALL_R - dist;
+  } else {
+    const dx1 = lx - (-hW);
+    const dx2 = hW - lx;
+    const dy1 = ly - 0;
+    const dy2 = hH - ly;
+    const dz1 = lz - (-hD);
+    const dz2 = hD - lz;
+    const minDist = Math.min(dx1, dx2, dy1, dy2, dz1, dz2);
+    if (minDist === dx1) { localNormal = new THREE.Vector3(-1, 0, 0); penetration = dx1 + BALL_R; }
+    else if (minDist === dx2) { localNormal = new THREE.Vector3(1, 0, 0); penetration = dx2 + BALL_R; }
+    else if (minDist === dy1) { localNormal = new THREE.Vector3(0, -1, 0); penetration = dy1 + BALL_R; }
+    else if (minDist === dy2) { localNormal = new THREE.Vector3(0, 1, 0); penetration = dy2 + BALL_R; }
+    else if (minDist === dz1) { localNormal = new THREE.Vector3(0, 0, -1); penetration = dz1 + BALL_R; }
+    else { localNormal = new THREE.Vector3(0, 0, 1); penetration = dz2 + BALL_R; }
+  }
+
+  const cosW = Math.cos(col.rotY);
+  const sinW = Math.sin(col.rotY);
+  const wx = localNormal.x * cosW - localNormal.z * sinW;
+  const wz = localNormal.x * sinW + localNormal.z * cosW;
+  const normal = new THREE.Vector3(wx, localNormal.y, wz).normalize();
+
+  return { normal, penetration, landing: col.landing };
+}
+
+function resolveBallCollisions() {
+  for (const col of fieldColliders) {
+    let hit = null;
+    if (col.type === 'cylinder_shell') {
+      hit = checkCylinderShell(ball.position, col);
+    } else if (col.type === 'stands_slope') {
+      hit = checkStandsSlope(ball.position, col);
+    } else if (col.type === 'box') {
+      hit = checkAABB(ball.position, col);
+    } else if (col.type === 'rotated_box') {
+      hit = checkRotatedBox(ball.position, col);
+    }
+
+    if (hit) {
+      // 1. Correct position
+      ball.position.addScaledVector(hit.normal, hit.penetration);
+
+      // 2. Reflect velocity (restitution e = 0.5)
+      const e = 0.5;
+      const vDotN = fly.v.dot(hit.normal);
+      if (vDotN < 0) {
+        fly.v.addScaledVector(hit.normal, -(1 + e) * vDotN);
+      }
+
+      // 3. Trigger landing if needed
+      if (hit.landing && !fly.landed) {
+        landBall(false);
+      }
+    }
+  }
+}
 
 function updateGame(dt) {
   // ワインドアップゲージ: ピッチャーを囲む円が縮み、0になった瞬間に発射
@@ -951,6 +1153,7 @@ function updateGame(dt) {
       fly.v.y -= 9.8*h;
       fly.v.addScaledVector(fly.v.clone().multiplyScalar(-fly.dragK*fly.v.length()), h); // 空気抵抗
       ball.position.addScaledVector(fly.v, h);
+      resolveBallCollisions();
       if (ball.position.y <= BALL_R && !fly.landed) landBall();
       if (fly.landed && ball.position.y < BALL_R) ball.position.y = BALL_R;
     }
